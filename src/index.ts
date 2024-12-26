@@ -13,9 +13,9 @@ export default {
     // } else if (url.pathname === "/do-translate") {
     //   const response = await fetchUntranslatedRecord(env.DB, env);
     //   return addCorsHeaders(response);
-    } else if (url.pathname === "/send-telegram") {
-      const response = await sendTelegramPost(env.DB, env);
-      return addCorsHeaders(response);
+    // } else if (url.pathname === "/send-telegram") {
+    //   const response = await sendTelegramPost(env.DB, env);
+    //   return addCorsHeaders(response);
     }  else if (url.pathname.startsWith("/catalan_news/")) {
       const response = await fetchNewsDetail(url.pathname, env.DB);
       return addCorsHeaders(response);
@@ -33,6 +33,7 @@ export default {
     try {
       await loadFeedAndSaveToDB(env.DB);
       await fetchUntranslatedRecord(env.DB, env);
+      await sendTelegramPost(env.DB, env);
     } catch (error) {
       console.error("Error in scheduled event:", error);
     }
@@ -53,17 +54,15 @@ async function sendTelegramPost(db: D1Database, env: Env): Promise<Response> {
     // Construct the URL of the page
     const pageUrl = `https://8log.ir/catalan_news/?id=${id}&title=${slug_url}`;
 
-    // Construct the caption with photo
+    // Construct the caption
     const caption = `
 <b>${title_fa}</b>
 
 ${summary}
-
-<a href="${pageUrl}" style="display: inline-block; padding: 12px 24px; background-color: #007BFF; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 10px;">مشاهده بیشتر</a>
     `;
 
-    // Send message with photo to Telegram group
-    const telegramResponse = await sendPhotoToTelegram(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID, photo, caption);
+    // Send message with photo and inline keyboard to Telegram group
+    const telegramResponse = await sendPhotoWithButtonToTelegram(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID, photo, caption, pageUrl);
 
     if (!telegramResponse.ok) {
       console.error("Failed to send message to Telegram", telegramResponse);
@@ -83,13 +82,20 @@ ${summary}
   }
 }
 
-async function sendPhotoToTelegram(botToken: string, chatId: string, photoUrl: string, caption: string) {
+async function sendPhotoWithButtonToTelegram(botToken: string, chatId: string, photoUrl: string, caption: string, buttonUrl: string) {
   const url = `https://api.telegram.org/bot${botToken}/sendPhoto`;
   const payload = {
     chat_id: chatId,
     photo: photoUrl,
     caption: caption,
-    parse_mode: "HTML", // To support bold text and links
+    parse_mode: "HTML",
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "مشاهده بیشتر", url: buttonUrl }
+        ]
+      ]
+    }
   };
 
   const response = await fetch(url, {
