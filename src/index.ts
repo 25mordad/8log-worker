@@ -16,6 +16,9 @@ export default {
     } else if (url.pathname.startsWith("/catalan_news/")) {
       const response = await fetchNewsDetail(url.pathname, env.DB);
       return addCorsHeaders(response);
+    } else if (url.pathname === "/sitemap.xml") { // New sitemap route
+      const response = await generateSitemap(env.DB);
+      return response; // No need for CORS headers on sitemap
     } else if (request.method === "OPTIONS") {
       return handleOptions();
     } else {
@@ -282,6 +285,61 @@ async function generateHashedId(input: string): Promise<string> {
     .replace(/\//g, "_")
     .replace(/=+$/, "");
   return hashBase64.slice(0, 16); // Truncate for uniqueness
+}
+
+async function generateSitemap(db: D1Database): Promise<Response> {
+  try {
+    const result = await db.prepare(`SELECT * FROM catalan_news WHERE is_translated = 1 ORDER BY id DESC;`).all();
+    const rows = result.results;
+
+    let sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`;
+
+    for (const item of rows) {
+      try {
+        const url = item.source_url;
+        if (url) {
+          sitemap += `
+  <url>
+    <loc>${url}</loc>`;
+
+          if (item.published_date) {
+            try {
+              const dateObj = new Date(item.published_date);
+              if (!isNaN(dateObj)) {
+                const formattedDate = dateObj.toISOString().split("T")[0];
+                sitemap += `
+    <lastmod>${formattedDate}</lastmod>`;
+              } else {
+                console.error(`Invalid date: ${item.published_date} for ${url}`);
+              }
+            } catch (dateError) {
+              console.error(`Date parse error: ${dateError} for ${url}`);
+            }
+          }
+           sitemap += `
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>`;
+        }
+      } catch (itemError) {
+        console.error(`Item error: ${itemError} for item id: ${item.id}`);
+      }
+    }
+
+    sitemap += `
+</urlset>`;
+
+    return new Response(sitemap, {
+      headers: {
+        "Content-Type": "application/xml",
+        "Cache-Control": "max-age=3600", // Cache for 1 hour
+      },
+    });
+  } catch (error) {
+    console.error("Sitemap generation error:", error);
+    return new Response("Error generating sitemap", { status: 500 });
+  }
 }
 
 // Define Env interface for Worker environment bindings
