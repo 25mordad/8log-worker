@@ -13,7 +13,10 @@ export default {
     // } else if (url.pathname === "/do-translate") {
     //   const response = await fetchUntranslatedRecord(env.DB, env);
     //   return addCorsHeaders(response);
-    } else if (url.pathname.startsWith("/catalan_news/")) {
+    } else if (url.pathname === "/send-telegram") {
+      const response = await sendTelegramPost(env.DB, env);
+      return addCorsHeaders(response);
+    }  else if (url.pathname.startsWith("/catalan_news/")) {
       const response = await fetchNewsDetail(url.pathname, env.DB);
       return addCorsHeaders(response);
     } else if (url.pathname === "/sitemap.xml") { // New sitemap route
@@ -35,6 +38,68 @@ export default {
     }
   },
 };
+
+async function sendTelegramPost(db: D1Database, env: Env): Promise<Response> {
+  try {
+    // Fetch a row with `telegram_data` set to null
+    const result = await db.prepare("SELECT * FROM catalan_news WHERE telegram_data IS NULL LIMIT 1").first();
+    if (!result) {
+      return new Response("No records to send to Telegram", { status: 200 });
+    }
+
+    // Extract required data
+    const { id, title_fa, summary, slug_url, photo } = result;
+
+    // Construct the URL of the page
+    const pageUrl = `https://8log.ir/catalan_news/?id=${id}&title=${slug_url}`;
+
+    // Construct the caption with photo
+    const caption = `
+<b>${title_fa}</b>
+
+${summary}
+
+<a href="${pageUrl}" style="display: inline-block; padding: 12px 24px; background-color: #007BFF; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 10px;">مشاهده بیشتر</a>
+    `;
+
+    // Send message with photo to Telegram group
+    const telegramResponse = await sendPhotoToTelegram(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID, photo, caption);
+
+    if (!telegramResponse.ok) {
+      console.error("Failed to send message to Telegram", telegramResponse);
+      return new Response("Failed to send message to Telegram", { status: 500 });
+    }
+
+    // Update the `telegram_data` field in the database
+    await db
+      .prepare("UPDATE catalan_news SET telegram_data = ? WHERE id = ?")
+      .bind(JSON.stringify(telegramResponse), id)
+      .run();
+
+    return new Response("Message sent and database updated", { status: 200 });
+  } catch (error) {
+    console.error("Error in sendTelegramPost:", error);
+    return new Response("Internal Server Error", { status: 500 });
+  }
+}
+
+async function sendPhotoToTelegram(botToken: string, chatId: string, photoUrl: string, caption: string) {
+  const url = `https://api.telegram.org/bot${botToken}/sendPhoto`;
+  const payload = {
+    chat_id: chatId,
+    photo: photoUrl,
+    caption: caption,
+    parse_mode: "HTML", // To support bold text and links
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  return response.json();
+}
 
 // Fetch a single news item based on ID
 async function fetchNewsDetail(path: string, db: D1Database): Promise<Response> {
@@ -102,7 +167,7 @@ function handleOptions(): Response {
 async function fetchRecords(db: D1Database): Promise<Response> {
 
   try {
-    const result = await db.prepare(`SELECT * FROM catalan_news WHERE is_translated = 1 ORDER BY id DESC;`).all();
+    const result = await db.prepare(`SELECT * FROM catalan_news WHERE is_translated = 1 ORDER BY id DESC LIMIT 20;`).all();
     const rows = result.results;
 
     if (!rows || rows.length === 0) {
@@ -287,6 +352,7 @@ async function generateHashedId(input: string): Promise<string> {
   return hashBase64.slice(0, 16); // Truncate for uniqueness
 }
 
+
 async function generateSitemap(db: D1Database): Promise<Response> {
   try {
     const result = await db.prepare(`SELECT * FROM catalan_news WHERE is_translated = 1 ORDER BY id DESC;`).all();
@@ -297,7 +363,8 @@ async function generateSitemap(db: D1Database): Promise<Response> {
 
     for (const item of rows) {
       try {
-        const url = `https://8log.ir/catalan_news/?id=${item.ID}&title=${item.SLUG}`; // Use template literals for string construction
+
+        const url = `https://8log.ir/catalan_news?id=`+item.id+`&amp;title=`+item.slug_url;
 
         if (url) {
           sitemap += `
@@ -318,7 +385,6 @@ async function generateSitemap(db: D1Database): Promise<Response> {
               console.error(`Date parse error: ${dateError} for ${url}`);
             }
           }
-
            sitemap += `
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -343,6 +409,7 @@ async function generateSitemap(db: D1Database): Promise<Response> {
     return new Response("Error generating sitemap", { status: 500 });
   }
 }
+
 
 // Define Env interface for Worker environment bindings
 interface Env {

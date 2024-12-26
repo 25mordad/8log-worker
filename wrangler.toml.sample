@@ -17,3 +17,5 @@ crons = ["*/5 * * * *"]
 
 [vars]
 OPENAI_API_KEY = "XXX"
+TELEGRAM_BOT_TOKEN=XXX
+TELEGRAM_CHAT_ID=XXX
