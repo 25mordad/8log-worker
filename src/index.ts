@@ -297,7 +297,8 @@ async function generateSitemap(db: D1Database): Promise<Response> {
 
     for (const item of rows) {
       try {
-        const url = item.source_url;
+        const url = `https://8log.ir/catalan_news/?id=${item.ID}&title=${item.SLUG}`; // Use template literals for string construction
+
         if (url) {
           sitemap += `
   <url>
@@ -317,6 +318,7 @@ async function generateSitemap(db: D1Database): Promise<Response> {
               console.error(`Date parse error: ${dateError} for ${url}`);
             }
           }
+
            sitemap += `
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
