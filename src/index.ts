@@ -10,9 +10,28 @@ export default {
     // } else if (url.pathname === "/load-feed") {
     //   const response = await loadFeedAndSaveToDB(env.DB);
     //   return addCorsHeaders(response);
-    // } else if (url.pathname === "/do-translate") {
-    //   const response = await fetchUntranslatedRecord(env.DB, env);
-    //   return addCorsHeaders(response);
+    } else if (url.pathname === "/do-translate") {
+      // Extract the security code from the query parameters
+      const securityCode = url.searchParams.get("code");
+
+      // Check if the provided security code matches the one in the environment variable
+      if (!securityCode || securityCode !== env.SECURITY_CODE) {
+        return addCorsHeaders(
+          new Response("Unauthorized: Invalid security code.", { status: 403 })
+        );
+      }
+
+      // Extract the 'id' query parameter
+      const idParam = url.searchParams.get("id");
+      const id = idParam ? parseInt(idParam, 10) : undefined; // Convert to number if provided
+
+      if (idParam && isNaN(id)) {
+        // Return an error response if the provided ID is not a valid number
+        return addCorsHeaders(new Response("Invalid ID parameter.", { status: 400 }));
+      }
+
+      const response = await fetchUntranslatedRecord(env.DB, env, id); // Pass the ID (or undefined if not provided)
+      return addCorsHeaders(response);
     // } else if (url.pathname === "/send-telegram") {
     //   const response = await sendTelegramPost(env.DB, env);
     //   return addCorsHeaders(response);
@@ -49,16 +68,16 @@ async function sendTelegramPost(db: D1Database, env: Env): Promise<Response> {
     }
 
     // Extract required data
-    const { id, title_fa, summary, slug_url, photo } = result;
+    const { id, title_fa,published_date, content_telegram, slug_url, photo } = result;
 
     // Construct the URL of the page
     const pageUrl = `https://8log.ir/catalan_news/?id=${id}&title=${slug_url}`;
 
     // Construct the caption
     const caption = `
-<b>${title_fa}</b>
+    ${content_telegram}
 
-${summary}
+    ${published_date}
     `;
 
     // Send message with photo and inline keyboard to Telegram group
@@ -228,10 +247,17 @@ async function loadFeedAndSaveToDB(db: D1Database): Promise<Response> {
 }
 
 // Fetch an untranslated record and translate it
-async function fetchUntranslatedRecord(db: D1Database, env: Env): Promise<Response> {
+async function fetchUntranslatedRecord(db: D1Database, env: Env, id?: number): Promise<Response> {
   console.log("fetchUntranslatedRecord started");
 
-  const result = await db.prepare(`SELECT * FROM catalan_news WHERE is_translated = 0 AND is_crawled = 1 AND chat_gpt IS NULL LIMIT 1;`).first();
+  // Modify query to allow filtering by ID if provided
+  const query = id
+    ? `SELECT * FROM catalan_news WHERE id = ? AND is_crawled = 1 LIMIT 1;`
+    : `SELECT * FROM catalan_news WHERE is_translated = 0 AND is_crawled = 1 AND chat_gpt IS NULL LIMIT 1;`;
+
+  const result = id
+    ? await db.prepare(query).bind(id).first()
+    : await db.prepare(query).first();
 
   if (!result) {
     return new Response("No untranslated records found.", { status: 404 });
@@ -243,24 +269,37 @@ async function fetchUntranslatedRecord(db: D1Database, env: Env): Promise<Respon
     const slug = generatePersianSlug(translated.seo_title);
     translated.slug_url = slug;
 
-
-
     if (translated) {
       await db
-        .prepare(
-          `UPDATE catalan_news SET title_fa = ?, content_fa = ?, slug_url = ?, seo_title = ?, seo_description = ?, seo_keywords = ?, summary = ?, is_translated = 1 WHERE id = ?;`
-        )
-        .bind(
-          translated.title_fa,
-          translated.content_fa,
-          translated.slug_url,
-          translated.seo_title,
-          translated.seo_description,
-          translated.seo_keywords,
-          translated.summary,
-          result.id
-        )
-        .run();
+      .prepare(
+        `UPDATE catalan_news
+         SET
+           title_fa = ?,
+           content_fa = ?,
+           slug_url = ?,
+           seo_title = ?,
+           seo_description = ?,
+           seo_keywords = ?,
+           summary = ?,
+           is_translated = 1,
+           published_at = ?,
+           content_telegram = ?
+         WHERE id = ?;`
+      )
+      .bind(
+        translated.title_fa,
+        translated.content_fa,
+        translated.slug_url,
+        translated.seo_title,
+        translated.seo_description,
+        translated.seo_keywords,
+        translated.seo_description,
+        new Date().toISOString(), // Current date and time in ISO 8601 format
+        translated.content_telegram,
+        result.id
+      )
+      .run();
+
 
       return new Response("Translation completed and record updated.", { status: 200 });
     } else {
@@ -282,68 +321,126 @@ function generatePersianSlug(title: string): string {
     .replace(/[^ء-ي۰-۹a-z0-9-]+/g, ""); // Remove non-Persian, non-English, and non-numeric characters
 }
 
+async function translateRecordWithChatGPT(record, db, env) {
+  // Step 1: Translate title and content
+  const translationPrompt = `
+  Translate the following title and content into Persian. The content_fa field should include the translated content in Persian, summarized to be informal, engaging, and suitable as news for a general audience. Use appropriate HTML tags such as <p>, <h2>, <strong>, or others where necessary to enhance readability.
 
-// Translate a record using ChatGPT
-async function translateRecordWithChatGPT(record, db, env): Promise<any> {
+  Return the result as a JSON object with the following fields:
+  - title_fa: The translated title in Persian.
+  - content_fa: The translated and summarized content in Persian, written informally like news for a general audience and formatted in HTML (limited to 3000 characters if necessary).
 
-  const prompt = `
-  Translate the following text into Persian and create a short, friendly, and engaging summary suitable for a Telegram post. Return the result as a JSON object with the following fields:
-  - title_fa
-  - content_fa (formatted in HTML with <p>, <h2>, <strong>, and other tags for readability, and limited to 3000 characters if necessary)
-  - seo_title
-  - seo_description
-  - seo_keywords
-  - summary (very short and friendly, written in an engaging tone for Telegram)
-
-  Ensure the response is valid JSON with no extra text or formatting. If the content exceeds 3000 characters, shorten it while maintaining readability and context. Here is the text:
+  Ensure the response is valid JSON with no extra text or formatting. Here is the text:
   ${record.title_en}
   ${record.content_en}
   `;
 
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const translationResponse = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "gpt-3.5-turbo", // Using the cheaper version
+      model: "gpt-3.5-turbo",
       messages: [
         { role: "system", content: "You are a translator. Always respond with valid JSON and nothing else." },
-        { role: "user", content: prompt },
+        { role: "user", content: translationPrompt },
       ],
       temperature: 1,
-      // max_completion_tokens: 4096,
-      response_format: {
-        type: "json_object",
-      },
     }),
   });
-
-  const clonedResponse = response.clone();
+  const clonedResponse = translationResponse.clone();
   const rawResponse = await clonedResponse.text();
-  // console.log("rawResponse:", rawResponse);
-  // console.log("Response Status:", clonedResponse.status);
-
   await db
-    .prepare(
-      `UPDATE catalan_news SET chat_gpt = ? WHERE id = ?;`
-    )
+    .prepare(`UPDATE catalan_news SET chat_gpt = ? WHERE id = ?;`)
     .bind(
       rawResponse,
       record.id
     )
     .run();
 
-  const data = await response.json();
-
-  if (data.choices && data.choices[0].message) {
-    return JSON.parse(data.choices[0].message.content);
-  } else {
-    throw new Error("Failed to parse ChatGPT response.");
+  const translationData = await translationResponse.json();
+  if (!translationData.choices || !translationData.choices[0].message) {
+    throw new Error("Failed to parse ChatGPT translation response.");
   }
+
+  const translated = JSON.parse(translationData.choices[0].message.content);
+
+  // Save the initial translation result to the database
+  await db
+    .prepare(`UPDATE catalan_news SET title_fa = ?, content_fa = ?, chat_gpt = ? WHERE id = ?;`)
+    .bind(
+      translated.title_fa,
+      translated.content_fa,
+      JSON.stringify({ title_fa: translated.title_fa, content_fa: translated.content_fa }),
+      record.id
+    )
+    .run();
+
+  // Step 2: Generate SEO, Telegram post, and summary based on translated content
+  const seoPrompt = `
+  Based on the following Persian title and content, generate the following fields:
+  - seo_title: A concise and relevant SEO title in Persian.
+  - seo_description: A brief and descriptive SEO description in Persian.
+  - seo_keywords: A list of relevant keywords in Persian, comma-separated.
+  - content_telegram: A post optimized for Telegram, using an engaging tone, emojis, and icons to attract attention.
+
+  Ensure the response is valid JSON with no extra text or formatting. Here is the text:
+  ${translated.title_fa}
+  ${translated.content_fa}
+  `;
+
+  const seoResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-3.5-turbo",
+      messages: [
+        { role: "system", content: "You are an SEO expert. Always respond with valid JSON and nothing else." },
+        { role: "user", content: seoPrompt },
+      ],
+      temperature: 1,
+    }),
+  });
+  const clonedSeoResponse = seoResponse.clone();
+  const rawSeoResponse = await clonedSeoResponse.text();
+  await db
+    .prepare(`UPDATE catalan_news SET chat_gpt = ? WHERE id = ?;`)
+    .bind(
+      rawSeoResponse,
+      record.id
+    )
+    .run();
+
+  const seoData = await seoResponse.json();
+  if (!seoData.choices || !seoData.choices[0].message) {
+    throw new Error("Failed to parse ChatGPT SEO response.");
+  }
+
+  const seoFields = JSON.parse(seoData.choices[0].message.content);
+
+  // Combine all fields and save to the database
+  const combinedData = { ...translated, ...seoFields };
+
+  await db
+    .prepare(
+      `UPDATE catalan_news SET chat_gpt = ?, is_translated = 1 WHERE id = ?;`
+    )
+    .bind(
+      JSON.stringify(combinedData),
+      record.id
+    )
+    .run();
+
+  return combinedData;
 }
+
+
 
 // Generate a hashed ID for a URL
 async function generateHashedId(input: string): Promise<string> {

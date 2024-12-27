@@ -21,6 +21,8 @@ CREATE TABLE catalan_news (
     telegram_data TEXT, -- Data related to Telegram posts (stored as JSON string)
     published_date TEXT, -- Data related to Telegram posts (stored as JSON string)
     chat_gpt TEXT -- Data related to Telegram posts (stored as JSON string)
+    published_at DATE --
+    content_telegram TEXT --
 );
 
 -- Add an index to url_id for faster search
