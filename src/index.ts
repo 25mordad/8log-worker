@@ -62,7 +62,7 @@ export default {
 async function sendTelegramPost(db: D1Database, env: Env): Promise<Response> {
   try {
     // Fetch a row with `telegram_data` set to null
-    const result = await db.prepare("SELECT * FROM catalan_news WHERE telegram_data IS NULL LIMIT 1").first();
+    const result = await db.prepare("SELECT * FROM catalan_news WHERE telegram_data IS NULL AND is_translated = 1 LIMIT 1").first();
     if (!result) {
       return new Response("No records to send to Telegram", { status: 200 });
     }
@@ -283,7 +283,8 @@ async function fetchUntranslatedRecord(db: D1Database, env: Env, id?: number): P
            summary = ?,
            is_translated = 1,
            published_at = ?,
-           content_telegram = ?
+           content_telegram = ?,
+           telegram_data = NULL
          WHERE id = ?;`
       )
       .bind(
@@ -324,17 +325,14 @@ function generatePersianSlug(title: string): string {
 async function translateRecordWithChatGPT(record, db, env) {
   // Step 1: Translate title and content
   const translationPrompt = `
-  Translate the following title and content into Persian. The content_fa field should include the translated content in Persian, summarized to be informal, engaging, and suitable as news for a general audience. Use appropriate HTML tags such as <p>, <h2>, <strong>, or others where necessary to enhance readability.
+  Translate the title and content into Persian as JSON:
+  - **title_fa**: A friendly, engaging title.
+  - **content_fa**: A complete translation, rewritten informally to focus on the main points, summarized but not shortened, and formatted in HTML (<p>, <h2>, etc.). Limit to 3000 characters.
 
-  Return the result as a JSON object with the following fields:
-  - title_fa: The translated title in Persian.
-  - content_fa: The translated and summarized content in Persian, written informally like news for a general audience and formatted in HTML (limited to 3000 characters if necessary).
-
-  Ensure the response is valid JSON with no extra text or formatting. Here is the text:
+  Text:
   ${record.title_en}
   ${record.content_en}
   `;
-
 
   const translationResponse = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
