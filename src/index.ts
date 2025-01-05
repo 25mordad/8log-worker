@@ -325,11 +325,11 @@ function generatePersianSlug(title: string): string {
 async function translateRecordWithChatGPT(record, db, env) {
   // Step 1: Translate title and content
   const translationPrompt = `
-  Translate the title and content into Persian as JSON:
-  - **title_fa**: A friendly, engaging title.
-  - **content_fa**: A complete translation, rewritten informally to focus on the main points, summarized but not shortened, and formatted in HTML (<p>, <h2>, etc.). Limit to 3000 characters.
+  Translate the given title and content into Persian. The response should include:
+  - title_fa: Translation of the title with a friendly, engaging format
+  - content_fa: A complete Persian translation of the content, rewritten informally and summarized to focus on the main points, making it understandable and appealing to a general audience. Format it in HTML (<p>, <h2>, <strong>, etc.) for readability. Limit to 3000 characters if needed.
 
-  Text:
+  Return the result as a valid JSON object with no extra text or formatting. Here is the text:
   ${record.title_en}
   ${record.content_en}
   `;
