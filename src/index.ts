@@ -58,7 +58,8 @@ export default {
     }
   },
 };
-
+//Bad Request: message caption is too long
+//Failed to send message to Telegram
 async function sendTelegramPost(db: D1Database, env: Env): Promise<Response> {
   try {
     // Fetch a row with `telegram_data` set to null
@@ -341,7 +342,7 @@ async function translateRecordWithChatGPT(record, db, env) {
       Authorization: `Bearer ${env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o",
       messages: [
         { role: "system", content: "You are a translator. Always respond with valid JSON and nothing else." },
         { role: "user", content: translationPrompt },
@@ -397,7 +398,7 @@ async function translateRecordWithChatGPT(record, db, env) {
       Authorization: `Bearer ${env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o-mini",
       messages: [
         { role: "system", content: "You are an SEO expert. Always respond with valid JSON and nothing else." },
         { role: "user", content: seoPrompt },
