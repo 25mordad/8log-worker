@@ -386,7 +386,7 @@ async function translateRecordWithChatGPT(record, db, env) {
   - seo_title: A concise and relevant SEO title in Persian.
   - seo_description: A brief and descriptive SEO description in Persian.
   - seo_keywords: A list of relevant keywords in Persian, comma-separated.
-  - content_telegram: A plain and professional Telegram post in Persian, without formatting markers like **, user engagement prompts, or calls to action such as "celebrate," "support," or "stay with us." The content should focus solely on delivering the information clearly.
+  - content_telegram: A concise and professional Telegram post in Persian, preserving emojis and newlines. Exclude any email addresses, calls to action for contacting the team, or invitations to listen to more episodes or engage further. The content should focus solely on presenting the core information in a clear and engaging manner.
 
   Ensure the response is valid JSON with no extra text or formatting. Here is the text:
   ${translated.title_fa}
