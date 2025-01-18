@@ -50,7 +50,7 @@ export default {
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
     try {
-      await loadFeedAndSaveToDB(env.DB);
+      // await loadFeedAndSaveToDB(env.DB);
       await fetchUntranslatedRecord(env.DB, env);
       await sendTelegramPost(env.DB, env);
     } catch (error) {
@@ -364,8 +364,10 @@ async function translateRecordWithChatGPT(record, db, env) {
   if (!translationData.choices || !translationData.choices[0].message) {
     throw new Error("Failed to parse ChatGPT translation response.");
   }
+  const rawContent = translationData.choices[0].message.content;
+  const jsonContent = rawContent.replace(/^```json\s*|\s*```$/g, '');
 
-  const translated = JSON.parse(translationData.choices[0].message.content);
+  const translated = JSON.parse(jsonContent);
 
   // Save the initial translation result to the database
   await db
@@ -384,12 +386,13 @@ async function translateRecordWithChatGPT(record, db, env) {
   - seo_title: A concise and relevant SEO title in Persian.
   - seo_description: A brief and descriptive SEO description in Persian.
   - seo_keywords: A list of relevant keywords in Persian, comma-separated.
-  - content_telegram: A post optimized for Telegram, using an engaging tone, emojis, and icons to attract attention.
+  - content_telegram: A plain and professional Telegram post in Persian, without formatting markers like **, user engagement prompts, or calls to action such as "celebrate," "support," or "stay with us." The content should focus solely on delivering the information clearly.
 
   Ensure the response is valid JSON with no extra text or formatting. Here is the text:
   ${translated.title_fa}
   ${translated.content_fa}
   `;
+
 
   const seoResponse = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
