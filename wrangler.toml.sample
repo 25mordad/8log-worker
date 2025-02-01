@@ -15,8 +15,24 @@ database_id = "XXX" # D1 database ID
 [triggers]
 crons = ["*/5 * * * *"]
 
-[vars]
+[vars] wrangler deploy
 OPENAI_API_KEY = "XXX"
 TELEGRAM_BOT_TOKEN=XXX
 TELEGRAM_CHAT_ID=XXX
 SECURITY_CODE=XXX
+TELEGRAM_CHANNEL_LINK="https://t.me/catalanNews8log"
+SITE_URL="https://8log.ir"
+
+# ✅ Staging environment -> wrangler dev --remote --env staging
+[env.staging]
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "stage-XXX"
+database_id = "XXX"
+[env.staging.vars]
+OPENAI_API_KEY = "XXX"
+SECURITY_CODE="batman"
+TELEGRAM_CHAT_ID="-111"
+TELEGRAM_BOT_TOKEN="XXX"
+SITE_URL="http://0.0.0.0:8000"
+TELEGRAM_CHANNEL_LINK = "https://t.me/catalanNews8log"

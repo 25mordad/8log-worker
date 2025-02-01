@@ -20,8 +20,8 @@ CREATE TABLE catalan_news (
     seo_keywords TEXT, -- SEO keywords (comma-separated)
     telegram_data TEXT, -- Data related to Telegram posts (stored as JSON string)
     published_date TEXT, -- Data related to Telegram posts (stored as JSON string)
-    chat_gpt TEXT -- Data related to Telegram posts (stored as JSON string)
-    published_at DATE --
+    chat_gpt TEXT, -- Data related to Telegram posts (stored as JSON string)
+    published_at DATE, --
     content_telegram TEXT --
 );
 

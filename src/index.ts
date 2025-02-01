@@ -58,8 +58,6 @@ export default {
     }
   },
 };
-//Bad Request: message caption is too long
-//Failed to send message to Telegram
 async function sendTelegramPost(db: D1Database, env: Env): Promise<Response> {
   try {
     // Fetch a row with `telegram_data` set to null
@@ -69,53 +67,52 @@ async function sendTelegramPost(db: D1Database, env: Env): Promise<Response> {
     }
 
     // Extract required data
-    const { id, title_fa,published_date, content_telegram, slug_url, photo } = result;
+    const { id, title_fa, published_date, content_telegram, slug_url, photo } = result;
 
     // Construct the URL of the page
-    const pageUrl = `https://8log.ir/catalan_news/?id=${id}&title=${slug_url}`;
+    const pageUrl = `${env.SITE_URL}/catalan_news/?id=${id}&title=${slug_url}`;
 
-    // Construct the caption
+    // ✅ Format the caption properly to include the text under the image
     const caption = `
-    ${content_telegram}
 
-    ${published_date}
-    `;
+${content_telegram}
 
-    // Send message with photo and inline keyboard to Telegram group
-    const telegramResponse = await sendPhotoWithButtonToTelegram(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID, photo, caption, pageUrl);
+🗓 <i>${published_date}</i>
 
+
+<b><a href="${pageUrl}">${title_fa}</a></b>
+
+<a href="${env.TELEGRAM_CHANNEL_LINK}">@catalanNews8log</a>
+`;
+
+    // ✅ Send the photo + formatted caption in **one single post**
+    const telegramResponse = await sendPhotoToTelegram(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID, photo, caption);
     if (!telegramResponse.ok) {
       console.error("Failed to send message to Telegram", telegramResponse);
       return new Response("Failed to send message to Telegram", { status: 500 });
     }
 
-    // Update the `telegram_data` field in the database
+    // ✅ Update the `telegram_data` field in the database
     await db
       .prepare("UPDATE catalan_news SET telegram_data = ? WHERE id = ?")
       .bind(JSON.stringify(telegramResponse), id)
       .run();
 
-    return new Response("Message sent and database updated", { status: 200 });
+    return new Response("Photo and message sent in one post, database updated", { status: 200 });
+
   } catch (error) {
     console.error("Error in sendTelegramPost:", error);
     return new Response("Internal Server Error", { status: 500 });
   }
 }
 
-async function sendPhotoWithButtonToTelegram(botToken: string, chatId: string, photoUrl: string, caption: string, buttonUrl: string) {
+async function sendPhotoToTelegram(botToken: string, chatId: string, photoUrl: string, caption: string) {
   const url = `https://api.telegram.org/bot${botToken}/sendPhoto`;
   const payload = {
     chat_id: chatId,
     photo: photoUrl,
     caption: caption,
-    parse_mode: "HTML",
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: "مشاهده بیشتر", url: buttonUrl }
-        ]
-      ]
-    }
+    parse_mode: "HTML",  // ✅ Ensures the text is formatted properly
   };
 
   const response = await fetch(url, {
@@ -167,7 +164,7 @@ function addCorsHeaders(response: Response): Response {
   const newHeaders = new Headers(response.headers);
   newHeaders.set("Access-Control-Allow-Origin", "*"); // Allow all origins
   newHeaders.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS"); // Allow all methods
-  newHeaders.set("Access-Control-Allow-Headers", "Content-Type, Authorization"); // Allow specific headers
+  newHeaders.set("Access-Control-Allow-Headers", "Content-Type, Authorization, ngrok-skip-browser-warning"); // Allow specific headers
   newHeaders.set("Access-Control-Max-Age", "86400"); // Cache preflight response for 24 hours
 
   return new Response(response.body, {
@@ -183,7 +180,7 @@ function handleOptions(): Response {
     headers: {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, ngrok-skip-browser-warning",
       "Access-Control-Max-Age": "86400",
     },
   });
